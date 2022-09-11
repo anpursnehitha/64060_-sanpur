@@ -1,0 +1,86 @@
+---
+title: "Assignment 1 - Machine Learning"
+author: "Snehitha Anpur"
+date: "2022-09-11"
+output: pdf_document 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The dataset considered here is Bank Churn Data downloaded from the below website:
+https://www.kaggle.com/datasets/gauravtopre/bank-customer-churn-dataset
+
+```{r}
+library(readr)
+BankCustomerChurnPrediction <- read_csv("BankChurnData/BankCustomerChurnPrediction.csv")
+View(BankCustomerChurnPrediction)
+attach(BankCustomerChurnPrediction)
+```
+
+Here are the descriptive statistics and of all the variables in the dataset:
+
+```{r}
+summary(BankCustomerChurnPrediction)
+```
+
+Here are the frequency and proportion tables of categorical variables:
+
+```{r}
+table1 <- table(country,gender)
+table1
+prop.table(table1)
+```
+
+Here are the data transformations:
+  - log transformation of a variable "age"
+  - square root of the variable "balance"
+
+```{r}
+BankCustomerChurnPrediction$log_age <- log10(age)
+BankCustomerChurnPrediction$sqrt_bal <- sqrt(balance)
+head(BankCustomerChurnPrediction)
+```
+
+Below are the plots for quantitative variables:
+  # Scatter Plot of Age vs Balance
+  # Histogram of Credit_Score
+  # Density graph of credit_score
+  # Density graph of sqrt_bal
+  # Density graph of log_age
+
+```{r}
+plot(age,balance,col = 'green') # Scatter Plot of Age vs Balance
+
+hist(credit_score,breaks = 20,col = 'blue') # Histogram of Credit_Score
+
+#install.packages("ggplot2") # Install package ggplot2
+library(ggplot2) # Initializing ggplot2 library
+#install.packages("dplyr") # Install package dplyr
+library(dplyr) # Initializing dplyr library
+
+BankCustomerChurnPrediction %>%
+  ggplot( aes(x=credit_score)) +
+    geom_density(fill="yellow", color="#e7ecef") # Density graph of credit_score
+
+BankCustomerChurnPrediction %>%
+  ggplot( aes(x=sqrt_bal)) +
+    geom_density(fill="purple", color="#e7ecef") # Density graph of sqrt_bal
+
+BankCustomerChurnPrediction %>%
+  ggplot( aes(x=log_age)) +
+    geom_density(fill="#56b3a3", color="#e7ecef") # Density graph of log_age
+```
+
+Below are the plots for categorical variables:
+  # Bar plot of Country
+  # Box plot of credit_score over gender
+  
+```{r}
+counts <- table(country)
+barplot(counts, main = "Country Distribution", xlab = "Country", col = "pink") # Barplot of Country
+
+ggplot(BankCustomerChurnPrediction, aes(x=gender, y=credit_score)) +  geom_boxplot(fill='orange') # Box plot of credit_score over gender
+
+```
