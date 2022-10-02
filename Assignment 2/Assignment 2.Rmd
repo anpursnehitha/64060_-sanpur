@@ -1,0 +1,231 @@
+---
+title: "Assignment 2"
+author: "Snehitha Anpur"
+date: "2022-10-01"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Import the Universal Bank data set into the working environment:
+
+```{r}
+library(readr)
+univbank <- read.csv("UniversalBank.csv")
+summary(univbank)
+```
+Check if the data set has any null values:
+
+```{r}
+any(is.na(univbank))
+```
+Prepare the data set according to the requirements given in the problem statement:
+
+```{r}
+library(dplyr)
+m_univbank <- select(univbank,-ID,-ZIP.Code) # Select the required variables
+
+class(m_univbank$Education) = "character" # Convert the class of Education to character as it is in numeric form
+class(m_univbank$Education)
+
+#install.packages("caret")
+library(caret)
+
+#Create dummy Variables for the categorical variables where the levels are more than two
+
+dummyModel <- dummyVars(~Education,data=m_univbank) # create the model using dummyVars in Caret package
+educationDummy <- predict(dummyModel,m_univbank)  # apply it to the data set
+head(educationDummy)
+```
+Append the Education dummy variables to the original data set and remove the numeric Education variable:
+
+```{r}
+m_univbank <- select(m_univbank,-Education) # Remove the numeric Education variable
+
+m_univbank_dummy <- cbind(m_univbank[,-13],educationDummy) # Append the dummy variables for education into original data set
+head(m_univbank_dummy)
+
+m_univbank_dummy <- m_univbank_dummy %>% select(Personal.Loan, everything()) # Place the dependent variable at the start in order to utilize it in the model
+m_univbank_dummy$Personal.Loan = as.factor(m_univbank_dummy$Personal.Loan) # Convert the data type into factor
+head(m_univbank_dummy)
+```
+
+Split the data into Training and Validation groups:
+
+```{r}
+set.seed(46)
+Train_Index = createDataPartition(m_univbank_dummy$Personal.Loan,p=0.60, list=FALSE) # 60% of data as Training
+Train_Data = m_univbank_dummy[Train_Index,]
+Validation_Data = m_univbank_dummy[-Train_Index,] # rest as validation
+
+Test_Data <- data.frame(Age=40,Experience=10,Income=84,Family=2,CCAvg=2,Mortgage=0,SecuritiesAccount=0,CDAccount=0,Online=1,CreditCard=1,Education1=0,Education2=1,Education3=0) # Create the test data
+
+# Check the summary of Train, Validation and Test data sets
+summary(Train_Data)
+summary(Validation_Data)
+summary(Test_Data)
+
+```
+Data sets have to be normalized before starting to process the model.
+
+```{r}
+
+colnames(m_univbank_dummy) # Fetch the column names in the data set
+
+norm_var <- c("Age","Experience","Income","Family","CCAvg","Mortgage") # Get all the numeric Variables
+
+train.norm.df <- Train_Data[,norm_var] # Filter the numeric variables in train data
+valid.norm.df <- Validation_Data[,norm_var] # Filter the numeric variables in validation data
+test.norm.df <- Test_Data[,norm_var] # Filter the numeric variables in test data
+
+norm.values <- preProcess(Train_Data[,norm_var], method=c("center", "scale")) # Using preProcess find out the normalized values of numeric variables in train data and apply it to validation and test data
+
+train.norm.df <- predict(norm.values,Train_Data)
+valid.norm.df <- predict(norm.values, Validation_Data)
+test.norm.df <- predict(norm.values, test.norm.df)
+
+# Verify the normalized values
+summary(train.norm.df)
+summary(valid.norm.df)
+summary(test.norm.df)
+```
+
+Model 1: using knn method in train method in Caret package
+
+```{r}
+#train.norm.df$Personal.Loan = as.factor(train.norm.df$Personal.Loan)
+
+set.seed(624)
+searchGrid <- expand.grid(k=seq(1:30))
+model <- train(Personal.Loan~.,data=train.norm.df,method="knn",tuneGrid=searchGrid)
+model
+best_k <- model$bestTune[[1]] # saves the best k
+best_k # Here the best k turned out to be 1 using the training data 
+```
+Model 2: using knn function in class package
+
+```{r}
+library(class)
+Train_Predictors <- select(train.norm.df,-Personal.Loan)
+Test_Predictors <- cbind(test.norm.df,Test_Data[,7:13])
+Valid_Predictors <- select(valid.norm.df,-Personal.Loan)
+
+Train_Labels <- train.norm.df[,1]
+Valid_Labels <- valid.norm.df[,1]
+
+Predicted_Valid_Labels <- knn(Train_Predictors,Valid_Predictors,cl = Train_Labels,k=1)
+
+head(Predicted_Valid_Labels)
+
+Predicted_Test_Labels <- knn(Train_Predictors,Test_Predictors,cl = Train_Labels,k=1)
+
+head(Predicted_Test_Labels) # For the given test data the model gave a result that the Customer would not apply for Personal Loan
+
+```
+Answer 1: For the given test data the model gave a result that the Customer would not apply for Personal Loan
+
+```{r}
+library(caret)
+accuracy.df <- data.frame(k = seq(1, 14, 1), accuracy = rep(0, 14))
+# compute knn for different k on validation.
+for(i in 1:14) {
+  knn.pred <- knn(Train_Predictors,Valid_Predictors,cl = Train_Labels,k=i)
+  accuracy.df[i, 2] <- confusionMatrix(knn.pred, Valid_Labels)$overall[1] 
+}
+accuracy.df
+```
+Answer 2: Based on the above result the best k for this data set is 3 as it has the highest accuracy of 96.40%
+
+```{r}
+#install.packages("gmodels")
+library(gmodels)
+
+Predicted_Valid_Labels <- knn(Train_Predictors,Valid_Predictors,cl = Train_Labels,k=3)
+
+head(Predicted_Valid_Labels)
+
+CrossTable(x = Valid_Labels,y = Predicted_Valid_Labels,prop.chisq = FALSE)
+
+```
+Answer 3: 
+
+ Using k=3, above result shows the confusion matrix of validation data set
+
+```{r}
+Predicted_Test_Labels <- knn(Train_Predictors,Test_Predictors,cl = Train_Labels,k=3)
+
+head(Predicted_Test_Labels) # For the given test data the model gave a result that the Customer would not apply for Personal Loan
+```
+Answer 4: 
+ 
+ Based on k=3 which is the best k value, the model gave a result that the Customer would not apply for Personal Loan
+
+ Now, split the data into train, validation and test data sets by the proportions of 50%, 30% and 20% respectively
+
+```{r}
+#install.packages("splitTools")
+#install.packages("ranger")
+library(splitTools)
+library(ranger)
+
+# Split data into partitions
+set.seed(5346)
+inds <- partition(m_univbank_dummy$Age, p = c(train = 0.5, valid = 0.3, test = 0.2))
+str(inds)
+
+train_ub <- m_univbank_dummy[inds$train, ]
+valid_ub <- m_univbank_dummy[inds$valid, ]
+test_ub <- m_univbank_dummy[inds$test, ]
+```
+
+Normalize the data using train data set:
+
+```{r}
+#norm_var <- c("Age","Experience","Income","Family","CCAvg","Mortgage") # Get all the numeric Variables
+
+train.norm.ub.df <- train_ub[,norm_var] # Filter the numeric variables in train data
+valid.norm.ub.df <- valid_ub[,norm_var] # Filter the numeric variables in validation data
+test.norm.ub.df <- test_ub[,norm_var] # Filter the numeric variables in test data
+
+norm.values.ub <- preProcess(train_ub[,norm_var], method=c("center", "scale")) # Using preProcess find out the normalized values of numeric variables in train data and apply it to validation and test data
+
+train.norm.ub.df <- predict(norm.values.ub,train_ub)
+valid.norm.ub.df <- predict(norm.values.ub, valid_ub)
+test.norm.ub.df <- predict(norm.values.ub, test_ub)
+
+# Verify the normalized values
+summary(train.norm.ub.df)
+summary(valid.norm.ub.df)
+summary(test.norm.ub.df)
+```
+```{r}
+Train_Predictors_Ub <- select(train.norm.ub.df,-Personal.Loan)
+Valid_Predictors_Ub <- select(valid.norm.ub.df,-Personal.Loan)
+Test_Predictors_Ub <- select(test.norm.ub.df,-Personal.Loan)
+
+Train_Labels_Ub <- train.norm.ub.df[,1]
+Valid_Labels_Ub <- valid.norm.ub.df[,1]
+Test_Labels_Ub <- test.norm.ub.df[,1]
+
+Predicted_Train_Labels_Ub <- knn(Train_Predictors_Ub,Train_Predictors_Ub,cl = Train_Labels_Ub,k=3)
+
+head(Predicted_Train_Labels_Ub)
+
+Predicted_Valid_Labels_Ub <- knn(Train_Predictors_Ub,Valid_Predictors_Ub,cl = Train_Labels_Ub,k=3)
+
+head(Predicted_Valid_Labels_Ub)
+
+Predicted_Test_Labels_Ub <- knn(Train_Predictors_Ub,Test_Predictors_Ub,cl = Train_Labels_Ub,k=3)
+
+head(Predicted_Test_Labels_Ub)
+```
+```{r}
+confusionMatrix(Predicted_Train_Labels_Ub,Train_Labels_Ub,positive = "1")
+confusionMatrix(Predicted_Valid_Labels_Ub,Valid_Labels_Ub,positive = "1")
+confusionMatrix(Predicted_Test_Labels_Ub,Test_Labels_Ub,positive = "1")
+```
+Answer 5: 
+ From the above confusion matrices of train, validation and test data sets, it can be seen that the accuracy of test data is 96.5%. It is between the accuracy of train data sets (98.08%) and accuracy of validation (96.01%). The reason for more accuracy in the training data is that the model was built on it whereas the actual accuracy is identified while the model is tested on validation and test data.
+
