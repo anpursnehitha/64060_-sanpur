@@ -1,0 +1,110 @@
+---
+title: "Assignment 3"
+author: "Snehitha Anpur"
+date: "2022-10-14"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+#install.packages("e1071") 
+library(dplyr)
+library(e1071) 
+library(readr)
+library(caret)
+library(ISLR)
+UniBank=read.csv("UniversalBank.csv")
+
+set.seed(111)
+
+#Partitioning train and test data
+
+traindata_index = createDataPartition(UniBank$Personal.Loan, p=0.6, list= FALSE)
+traindata = UniBank[traindata_index,]
+Validationdata = UniBank[-traindata_index,]
+```
+```{r}
+#Creating Pivot Table for CreditCard, Online and Personal Loan
+
+table(CreditCard=traindata$CreditCard,Online=traindata$Online,Loan=traindata$Personal.Loan)
+
+```
+Probability of the customer accepting the loan given the condition that credit card =1 and online=1
+
+```{r}
+B= 54/(54+497)
+B
+```
+```{r}
+#Creating Pivot tables for Loan vs Online and Loan vs Credit Card
+
+LoanvsOnline= table(Loan=traindata$Personal.Loan,Online=traindata$Online)
+print(LoanvsOnline)
+LoanvsCC=table(Loan=traindata$Personal.Loan,CreditCard=traindata$CreditCard)
+print(LoanvsCC)
+
+
+```
+```{r}
+#P(CC = 1 | Loan = 1)
+ 
+D1 = 87/291
+
+#P(Online = 1 | Loan = 1)
+
+D2 = 180/(180+112)
+
+#P(Loan = 1)
+
+D3 = 292/(2708+292)
+
+#P(CC = 1 | Loan = 0)
+
+D4 = 812/(1896+812)
+
+#P(Online = 1 | Loan = 0)
+
+D5 = 1596/(1112+1596)
+
+#P(Loan = 0)
+
+D6 = 1-(292/(2708+292))
+
+```
+Probability of given (Loan = 1 | CC = 1, Online = 1) using Naive Bayes probability
+```{r}
+
+E=(D1*D2*D3)/((D1*D2*D3)+(D4*D5*D6))
+E
+
+```
+The Value obtained in B is 0.09800363 and E is 0.101083. When comparing we see that the value obtained in finding probability by solving naive Bayes problem is more accurate than that obtained in B.
+
+
+
+```{r}
+library(dplyr)
+#Creating the test data for creditcard=1 and online=1
+
+Test= filter(traindata,CreditCard==1 & Online==1)
+
+#Building Naive Bayes model on the training data
+
+Model=naiveBayes(Personal.Loan~Online+CreditCard,data=traindata)
+
+#Predicting the test data using the Naive Bayes model
+
+Predicted_Test_labels <-predict(Model,Test, type = "raw")
+
+head(Predicted_Test_labels)
+
+```
+Value obtained in G is 0.1010447 and E is 0.101083 which are almost same
+ 
+ 
+ 
+
+
+
