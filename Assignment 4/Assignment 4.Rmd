@@ -112,7 +112,7 @@ The companies in this cluster have high revenue growth which indicates that the 
 Ideally, the companies should utilize their assets to increase revenue which results in a higher asset turnover ratio. However, this cluster has the lowest asset turnover ratio.
 This cluster of companies has the lowest Price Earnings Ratio, which indicates that these companies have better earnings.
 
-Question C:
+Question c:
 
 ```{r}
 
