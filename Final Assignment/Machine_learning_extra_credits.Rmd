@@ -1,0 +1,149 @@
+---
+title: "Machine_learning-ExtraCredits"
+author: "Snehitha Anpur"
+date: "2022-12-12"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+Energy_Data=read.csv("D:\\MSBA\\rTutorial\\Rtutorial\\fuel_receipts_costs_eia923.csv") # Reading csv file
+
+set.seed(1234) # Setting Seed value
+library(dplyr)
+library(caret)
+library(missForest)
+library(corrplot)
+library(factoextra)
+library(fpc)
+library(StatMatch)
+library(cluster)
+library(ggplot2)
+library(cowplot)
+
+```
+```{r}
+
+Energy_Data[Energy_Data==""] = NA # Replacing spaces with NA values
+
+Filtered_Energy_Data  = Energy_Data[,(colMeans(is.na(Energy_Data))*100)<50] #Removing the columns with more than 50% NA values
+
+Partitioned_EnergyData_Index = createDataPartition(Filtered_Energy_Data$rowid,p=0.02,list = FALSE) #Partitioning 2 percent of the data
+Partitioned_EnergyData = Filtered_Energy_Data[Partitioned_EnergyData_Index,]
+
+colMeans(is.na(Partitioned_EnergyData))*100 # Checking the NA values percentage
+
+Partitioned_EnergyData$report_date <- as.Date(Partitioned_EnergyData$report_date) #Converting  report_date to date type
+
+Partitioned_EnergyData$report_date <- as.numeric(format(Partitioned_EnergyData$report_date, "%Y")) #Formatting the date to Years
+
+Partitioned_Final_EnergyData=Partitioned_EnergyData[,-c(1,6,8,17)] #Removing specific column
+#row Id-Identifier, fuel_group_code_pudl- Similar values as fuel_group_code,Data Maturity- Single value
+
+```
+Data Imputation
+
+```{r}
+
+#Converting the character to factor type
+
+
+Partitioned_Final_EnergyData$report_date = as.factor(Partitioned_Final_EnergyData$report_date)
+
+Partitioned_Final_EnergyData$contract_type_code = as.factor(Partitioned_Final_EnergyData$contract_type_code)
+
+Partitioned_Final_EnergyData$energy_source_code = as.factor(Partitioned_Final_EnergyData$energy_source_code)
+
+Partitioned_Final_EnergyData$fuel_group_code = as.factor(Partitioned_Final_EnergyData$fuel_group_code)
+
+Partitioned_Final_EnergyData$primary_transportation_mode_code = as.factor(Partitioned_Final_EnergyData$primary_transportation_mode_code)
+
+Partitioned_Final_EnergyData$natural_gas_transport_code = as.factor(Partitioned_Final_EnergyData$natural_gas_transport_code)
+
+ImputedData = missForest(Partitioned_Final_EnergyData) # Imputed NA values with missForest package
+
+Imputed_EnergyData = ImputedData$ximp # Copying the Imputed Data
+
+Imputed_EnergyData$supplier_name = Partitioned_EnergyData$supplier_name # Adding the supplier name for the analysis
+
+```
+
+```{r}
+
+Train_label = createDataPartition(Imputed_EnergyData$plant_id_eia,p=0.75,list = FALSE) # Partitioning 75% for Train and 25% for Test
+
+Train_EnergyData = Imputed_EnergyData[Train_label,]
+
+Test_EnergyData = Imputed_EnergyData[-Train_label,]
+```
+
+```{r}
+Cluster_variables = Train_EnergyData[,c(6,7,10,11)] # Considering only the numerical variables
+
+Norm_EnergyData = scale(Cluster_variables) # Normalizing the data
+
+Get_distance= dist(Norm_EnergyData,method="euclidean") # Finding distance measure from euclidean
+
+hclustering=hclust(Get_distance,method = "complete") #Running the hierarchical clustering method
+
+plot(hclustering,cex=0.9,hang=-8); rect.hclust(hclustering,k=6,border=1.4);abline(h = 10, col = 'red') 
+
+h_cluster = cutree(hclustering, h=10)
+
+```
+
+```{r}
+library(e1071)
+library(caTools)
+library(class)
+
+Mul_reg_Fuel_received = lm(fuel_cost_per_mmbtu~fuel_received_units,data=Train_EnergyData)
+
+Mul_reg_Fuel_mmbut = lm(fuel_cost_per_mmbtu~fuel_mmbtu_per_unit,data=Train_EnergyData)
+
+Mul_reg_sul = lm(fuel_cost_per_mmbtu~sulfur_content_pct,data=Train_EnergyData)
+
+Mul_reg_ash= lm(fuel_cost_per_mmbtu~ash_content_pct,data=Train_EnergyData)
+
+Mul_reg_mer = lm(fuel_cost_per_mmbtu~mercury_content_ppm,data=Train_EnergyData)
+
+Multiple_regression=lm(fuel_cost_per_mmbtu~fuel_mmbtu_per_unit,data = Train_EnergyData)
+
+summary(Multiple_regression)
+
+prediction= predict(Mul_reg_Fuel_mmbut, newdata = Test_EnergyData, type="response")
+
+cor(prediction,Test_EnergyData$fuel_cost_per_mmbtu)
+
+```
+Here, From the lm models we see that only fuel_mmbtu_per_unit is statistically significant with the fuel_cost_mmbtu_per_unit.
+
+```{r}
+
+Train_data_cluster=cbind(Train_EnergyData,Cluster=as.factor(h_cluster))
+
+train_scale=scale(Train_EnergyData[,6:11])
+
+test_scale=scale(Test_EnergyData[,6:11])
+
+classifier_knn <- knn(train = train_scale,
+                      test = test_scale,
+                      cl = Train_data_cluster$Cluster,
+                      k = 1)
+
+test_data_cluster=cbind(Test_EnergyData,Cluster=as.factor(classifier_knn))
+Multiple_regression2=lm(fuel_cost_per_mmbtu~fuel_mmbtu_per_unit+Cluster,data = Train_data_cluster)
+
+prediction2= predict(Multiple_regression2, newdata = test_data_cluster, type="response")
+
+cor(prediction2, test_data_cluster$fuel_cost_per_mmbtu)
+
+```
+
+Hence, By Adding the cluster information, prediction has improved which is identified from correlation value
+

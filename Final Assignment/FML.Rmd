@@ -1,0 +1,245 @@
+---
+title: "Machine_Learning_Final_Project"
+author: "Snehitha Anpur"
+date: "2022-12-06"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Required Libraries
+
+```{r}
+
+
+library(dplyr)
+library(caret)
+library(missForest)
+library(corrplot)
+library(factoextra)
+library(fpc)
+library(StatMatch)
+library(cluster)
+library(ggplot2)
+library(cowplot)
+
+```
+
+Loading Source Data
+
+```{r}
+
+Energy_Data=read.csv("D:\\MSBA\\rTutorial\\Rtutorial\\fuel_receipts_costs_eia923.csv")
+
+set.seed(1234)
+
+```
+
+Data Cleaning
+
+```{r}
+
+Energy_Data[Energy_Data==""] = NA
+
+Filtered_Energy_Data  = Energy_Data[,(colMeans(is.na(Energy_Data))*100)<50]
+
+Partitioned_EnergyData_Index = createDataPartition(Filtered_Energy_Data$rowid,p=0.02,list = FALSE)
+Partitioned_EnergyData = Filtered_Energy_Data[Partitioned_EnergyData_Index,]
+
+colMeans(is.na(Partitioned_EnergyData))*100
+
+Partitioned_EnergyData$report_date <- as.Date(Partitioned_EnergyData$report_date)
+
+Partitioned_EnergyData$report_date <- as.numeric(format(Partitioned_EnergyData$report_date, "%Y"))
+
+Partitioned_Final_EnergyData=Partitioned_EnergyData[,-c(1,6,8,17)]
+
+```
+
+Data Imputation
+
+```{r}
+
+Partitioned_Final_EnergyData$report_date = as.factor(Partitioned_Final_EnergyData$report_date)
+
+Partitioned_Final_EnergyData$contract_type_code = as.factor(Partitioned_Final_EnergyData$contract_type_code)
+
+Partitioned_Final_EnergyData$energy_source_code = as.factor(Partitioned_Final_EnergyData$energy_source_code)
+
+Partitioned_Final_EnergyData$fuel_group_code = as.factor(Partitioned_Final_EnergyData$fuel_group_code)
+
+Partitioned_Final_EnergyData$primary_transportation_mode_code = as.factor(Partitioned_Final_EnergyData$primary_transportation_mode_code)
+
+Partitioned_Final_EnergyData$natural_gas_transport_code = as.factor(Partitioned_Final_EnergyData$natural_gas_transport_code)
+
+ImputedData = missForest(Partitioned_Final_EnergyData)
+
+Imputed_EnergyData = ImputedData$ximp
+
+Imputed_EnergyData$supplier_name = Partitioned_EnergyData$supplier_name
+
+```
+
+Finding Relations for the Numerical variables
+
+```{r}
+
+corrplot(cor(Imputed_EnergyData[,c(6:11)]))
+
+```
+
+
+ Data Partition for Train and Test
+ 
+```{r}
+
+Train_label = createDataPartition(Imputed_EnergyData$plant_id_eia,p=0.75,list = FALSE)
+
+Train_EnergyData = Imputed_EnergyData[Train_label,]
+
+Test_EnergyData = Imputed_EnergyData[-Train_label,]
+
+```
+
+Relations for the categorical variables
+
+
+```{r}
+
+a = ggplot(data = Train_EnergyData, aes(x = report_date,fill = fuel_group_code)) +
+    geom_bar(position = "fill") + ylab("proportion") + xlab("Year") +
+    stat_count(geom = "text", 
+             aes(label = stat(count)),
+             position=position_fill(vjust=0.5), colour="white")
+
+b = ggplot(data = Train_EnergyData, aes(x = energy_source_code,fill = fuel_group_code)) +
+    geom_bar(position = "fill") + ylab("proportion") + 
+    stat_count(geom = "text", 
+             aes(label = stat(count)),
+             position=position_fill(vjust=0.5), colour="white")
+
+c=ggplot(data = Train_EnergyData, aes(x = energy_source_code,fill = contract_type_code)) +
+    geom_bar(position = "fill") + ylab("proportion") +
+    stat_count(geom = "text", 
+             aes(label = stat(count)),
+             position=position_fill(vjust=0.5), colour="white")
+
+d = ggplot(data = Train_EnergyData, aes(x = report_date,fill = primary_transportation_mode_code)) + 
+    geom_bar(position = "fill") + ylab("proportion") + xlab("Year") + labs( fill="PTC")
+    stat_count(geom = "text", 
+             aes(label = stat(count)),
+             position=position_fill(vjust=0.5), colour="white")
+
+plot_grid(a,b,c,d)
+
+```
+
+Outliers Removal
+
+```{r}
+
+Fuelunits_quartiles = quantile(Train_EnergyData$fuel_received_units, probs=c(.25, .75), na.rm = FALSE)
+Fuelunits_IQR = IQR(Train_EnergyData$fuel_received_units)
+ 
+Fuelunits_Lower = Fuelunits_quartiles[1] - 1.5*Fuelunits_IQR
+Fuelunits_Upper = Fuelunits_quartiles[2] + 1.5*Fuelunits_IQR 
+ 
+Filtered_no_outlier = subset(Train_EnergyData, Train_EnergyData$fuel_received_units > Fuelunits_Lower & Train_EnergyData$fuel_received_units < Fuelunits_Upper)
+
+Fuelcost_quartiles = quantile(Filtered_no_outlier$fuel_cost_per_mmbtu, probs=c(.25, .75), na.rm = FALSE)
+Fuelcost_IQR <- IQR(Filtered_no_outlier$fuel_cost_per_mmbtu)
+ 
+Fuelcost_Lower = Fuelcost_quartiles[1] - 1.5*Fuelcost_IQR
+Fuelcost_Upper = Fuelcost_quartiles[2] + 1.5*Fuelcost_IQR 
+ 
+data_no_outlier = subset(Filtered_no_outlier, Filtered_no_outlier$fuel_cost_per_mmbtu > Fuelcost_Lower & Filtered_no_outlier$fuel_cost_per_mmbtu < Fuelcost_Upper)
+
+```
+
+Choosing and Normalising the  selected attributes
+
+```{r}
+
+Cluster_variables=data_no_outlier[,c(6,7,10,11)]
+
+Norm_EnergyData = scale(Cluster_variables)
+
+```
+
+K-Means Clustering 
+
+```{r}
+
+#fviz_nbclust(Norm_EnergyData, kmeans, method = "wss")
+
+fviz_nbclust(Norm_EnergyData, kmeans, method = "silhouette")
+
+Sil_k4 = kmeans(Norm_EnergyData, centers=4,nstart=50)
+
+fviz_cluster(Sil_k4,data=Norm_EnergyData)
+
+```
+DB-Scan Clustering
+
+```{r}
+
+dbscan::kNNdistplot(Norm_EnergyData,k=4)
+
+db=fpc::dbscan(Norm_EnergyData,eps= 0.5,MinPts = 4)
+
+fviz_cluster(db,Norm_EnergyData, stand= FALSE, frame=FALSE,goem= "point")
+
+```
+Hierarchical Clustering
+
+```{r}
+
+Get_distance= dist(Norm_EnergyData,method="euclidean")
+
+hclustering=hclust(Get_distance,method = "complete")
+
+plot(hclustering,cex=0.9,hang=-8); rect.hclust(hclustering,k=6,border=1.4);abline(h = 6, col = 'red')
+
+```
+Choosing the Clustering Algorithm
+
+```{r}
+
+h_cluster = cutree(hclustering, k=6)
+
+Hierarchial_EnergyData = cbind(data_no_outlier,Cluster=as.factor(h_cluster))
+
+Hierarchial_Analysis = Hierarchial_EnergyData %>% group_by(Cluster,energy_source_code,fuel_group_code) %>% summarise(across(c(fuel_received_units,fuel_mmbtu_per_unit,sulfur_content_pct,ash_content_pct,mercury_content_ppm,fuel_cost_per_mmbtu),mean))
+
+Hierarchial_Mean = Hierarchial_EnergyData %>% group_by(Cluster) %>% summarise(across(c(fuel_received_units,fuel_mmbtu_per_unit,sulfur_content_pct,ash_content_pct,mercury_content_ppm,fuel_cost_per_mmbtu),mean))
+
+Hierarchial_Mean
+
+write.csv(Hierarchial_Mean, "HierarchialMean.csv")
+
+write.csv(Hierarchial_Analysis, "Hierarchial.csv")
+
+write.csv(Hierarchial_EnergyData, "Hierarchial-energydata.csv")
+
+```
+
+
+```{r}
+
+ggplot(data = Hierarchial_EnergyData, aes(x = report_date,fill = Cluster)) +
+    geom_bar(position = "fill") + ylab("proportion") +
+    stat_count(geom = "text", 
+             aes(label = stat(count)),
+             position=position_fill(vjust=0.5), colour="white")
+
+```
+
+
+
+
+
+
+
+
